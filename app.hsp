@@ -1,0 +1,333 @@
+#include "hsp3utf.as"
+#include "hspext.as"
+#include "hspdef.as"
+
+disp_x = ginfo_dispx
+disp_y = ginfo_dispy
+chgdisp 1, disp_x, disp_y
+bgscr 0, disp_x, disp_y, 0, 0, 0,, 
+
+buttonA = 65 // Aボタン
+buttonSpace = 32 // スペースキー
+buttonBack = 8 // バックスペースキー
+buttonEnter = 13 // エンターキー
+
+// ステージの画像を格納する配列
+dim stagepics, 5
+stagepics = "assets/image/yunokawa.png", "assets/image/hanazono.png", "assets/image/yamanote.png", "assets/image/showa.png", "assets/image/yachigashira.png"
+stagebgpics = "assets/image/yunokawa-bg.png", "assets/image/hanazono-bg.png", "assets/image/yamanote-bg.png", "assets/image/showa-bg.png", "assets/image/yachigashira-bg.png"
+// ステージのマップの座標
+mapposx = 1320, 1235, 1280, 924, 703
+mapposy = 450, 280, 125, 40, 728
+
+// 現在のステージを格納する変数(ステージ1＝0、ステージ2＝1、ステージ3＝2、ステージ4＝3、ステージ5＝4)
+stage = 0
+
+// 音源ロード
+gosub *loadmm
+
+// 開始
+goto *begin
+
+*begin
+    stage = 0 // ここを変更すると開始ステージが変わる
+    point = 0
+    bgimg = "assets/image/hero.jpg" : gosub *loadbg
+    gosub *showmenu
+    // wait 50
+    mmplay 4
+    stop
+
+*nyuyoku
+    onkey 0
+    bgimg = "assets/image/nyuyoku-bg.png" : gosub *loadbg
+    mmstop -1
+    mmplay 0
+    wait 20
+    pos 300, 300 : picload "assets/image/newyork.png", 1
+    wait 350
+    pos 300, 300 : picload "assets/image/batsu-long.png", 1
+    mmplay 2 : wait 80
+    pos 300, 300 : color 96, 96, 96 : boxf 300, 300, 300+845, 300+160
+    pos 440, 310 : picload "assets/image/nyuyoku.png", 1
+    mmplay 1 : wait 350
+    goto *showstage
+
+*showstage
+    bgimg = "assets/image/map.jpg" : gosub *loadbg
+    mmplay 9
+    wait 300
+    pos mapposx(stage), mapposy(stage) : picload "assets/image/target.png", 1
+    wait 200
+    pos 20, 20 : picload stagepics(stage), 1
+    wait 700
+    mmplay 10
+    wait 300
+    mmstop
+    gosub *quiz
+    goto *clearstage
+
+*clearstage
+    stage++
+    if stage >= 5 {
+        goto *begin
+    } else {
+        goto *showstage
+    }
+
+*endpg
+    end
+
+*loadbg
+    redraw 0
+    buffer 1, , , , : picload bgimg
+    pic_x = ginfo(12): pic_y = ginfo(13)
+    gsel 0, 1
+    color 0, 0, 0: boxf pic_x, pic_y, 1
+    pos 0, 0 
+    gzoom disp_x, disp_y, 1, 0, 0, pic_x, pic_y
+    redraw 1
+    return
+
+*showmenu
+    menu_x = disp_x / 2 - 200
+    menu_y = disp_y / 5 * 4
+    onkey 1
+    pos menu_x, menu_y
+    font "メイリオ", 40
+    color 255, 255, 255
+    mes "Press a button to start"
+    onkey gosub *menukey
+    return
+
+*menukey
+    if iparam == buttonA {
+        gosub *nyuyoku
+    } else : if iparam == buttonBack {
+        gosub *endpg
+    }
+    return
+
+*loadmm
+    mmload "assets/sound/nyu-yoku.wav", 0
+    mmload "assets/sound/button-ok.mp3", 1
+    mmload "assets/sound/button-ng.mp3", 2
+    mmload "assets/sound/button.mp3", 3
+    mmload "assets/sound/win.mp3", 4
+    mmload "assets/sound/timer.mp3", 5
+    mmload "assets/sound/mondai.wav", 6
+    mmload "assets/sound/gameover.mp3", 7
+    mmload "assets/sound/winner.mp3", 8
+    mmload "assets/sound/stagebegin.mp3", 9
+    mmload "assets/sound/se-shine.mp3", 10
+    return
+
+*pickquiz
+    // クイズの問題をランダムに選ぶ
+    n = rnd(quiznum)
+    // クイズの問題、答え、説明はタブ区切りで格納されているので、タブで分割して配列に格納する
+    q = quizlist(n)
+    split q, "\t", kekka
+    question = kekka(0) // 問題
+    answer = kekka(1) // 答え
+    description = kekka(2) // 説明
+    return
+
+*timer
+    mmplay 5
+    repeat 5
+        wait 100
+    loop
+    return
+
+// クイズデータをロードするサブルーチン: level=1～5
+*buildquiz
+    // クイズデータをロード
+    notesel qdata
+    noteload "data/quiz" + level + ".tsv"
+    quiznum = noteinfo(0) // クイズの数を取得
+    quizsize = noteinfo(1) // クイズのサイズを取得
+
+    sdim quizlist, quizsize, quiznum // クイズの数だけ配列を確保
+    sdim data, 256
+    repeat quiznum
+        if cnt != 0 {
+            noteget data, cnt
+            quizlist(cnt - 1) = data
+        }
+    loop
+
+    // クイズの問題
+    question = ""
+    // クイズの答え
+    answer = ""
+    // クイズの答えの説明
+    description = ""
+
+    randomize
+    // 問題配列
+    sdim qlist, 1024, 5
+    // 答え配列
+    sdim alist, 512, 5
+    // 説明配列
+    sdim dlist, 4096, 5
+    repeat 5
+        // クイズの問題をランダムに選ぶ
+        gosub *pickquiz
+        qlist(cnt) = question
+        alist(cnt) = answer
+        dlist(cnt) = description
+    loop
+    return
+
+*mondai
+    onkey 0
+    mmplay 6
+    gosub *in_mondai
+    gosub *timeup
+    gosub *showAnswer
+    return
+
+*in_mondai
+    // クイズの問題を表示する
+    i = round - 1
+    gosub *setmondai
+    onkey 1
+    onkey gosub *answerWait
+    wait 100 * 3
+    gosub *timer
+    return
+
+*answerWait
+    if iparam == buttonA {
+        mmplay 3
+        message="回答をどうぞ！": gosub *moji
+        onkey gosub *showAnswer
+        wait 100 * 2
+        gosub *timer
+        gosub *answerNG
+    }
+    return
+
+*answerNG
+    onkey 0
+    mmplay 2
+    round = round + 1
+    message="不正解！": gosub *moji
+    wait 100 * 2
+    goto *afterAnswer
+
+*answerOK
+    onkey 0
+    mmplay 1
+    point = point + 1
+    round = round + 1
+    message="正解！": gosub *moji
+    goto *afterAnswer
+
+*timeup
+    onkey 0
+    mmplay 2
+    message="時間切れ！": gosub *moji
+    message="答え:" + alist(i): gosub *moji
+    wait 100 * 2
+    round = round + 1
+    goto *afterAnswer
+
+*showAnswer
+    repeat
+        if iparam == buttonSpace {
+            break
+        }
+        wait 10
+    loop
+    message= "答え:" + alist(i): gosub *moji
+    onkey gosub *judge
+    stop
+    return
+
+*judge
+    if iparam == buttonEnter {
+        gosub *answerOK
+    } else : if iparam == buttonBack {
+        gosub *answerNG
+        gosub *showAnswer
+    }
+    return
+
+*showDescription
+    message="説明:" + dlist(i): gosub *moji
+    return
+
+*afterAnswer
+    gosub *showDescription
+    if point >= 3 {
+        if stage >= 4 {
+            wait 100 * 1
+            mmplay 8
+            message="優勝！": gosub *moji
+            wait 100 * 8
+            goto *begin
+        } else {
+            wait 100
+            mmplay 4
+            wait 100 * 5
+            stage = stage + 1
+            goto *showstage
+        }
+    } else : if 5 - round < 2 - point {
+        mmplay 7
+        message="脱落・・・！": gosub *moji
+        wait 100 * 6
+        goto *begin
+    }
+    wait 100 * 3
+    goto *mondai
+
+*setmondai
+    gosub *reloadstage
+    font "メイリオ", 38
+    pos 80, 200: message="問題" : gosub *moji
+    wait 100
+    pos 80, 260: message=qlist(i) : gosub *moji
+    return
+
+*reloadstage
+    // ステージの画像をロードする
+    bgimg = stagebgpics(stage) : gosub *loadbg
+    return
+
+*moji 
+    redraw 0
+    color 0, 0, 0 
+    px=ginfo_cx: py=ginfo_cy
+    pos px-3, py : mes message
+    pos px+3, py : mes message
+    pos px,   py-3 : mes message
+    pos px,   py+3 : mes message
+    pos px-2, py-2 : mes message
+    pos px+2, py-2 : mes message
+    pos px-2, py+2 : mes message
+    pos px+2, py+2 : mes message
+    color 255, 255, 255 : pos px, py : mes message
+    redraw 1
+    return
+
+*beginquiz
+    point = 0
+    level = stage + 1
+    gosub *buildquiz
+    wait 10
+    round = 1
+    bgimg = stagebgpics(stage) : gosub *loadbg
+    pos 300, 300: message="ステージ" + level + " 開始！" : gosub *moji
+    wait 300
+    gosub *reloadstage
+    return
+
+*quiz
+    gosub *beginquiz
+    gosub *mondai
+    return
+
+
